@@ -14,7 +14,47 @@ from .models.s3gen import S3GEN_SR, S3Gen
 from .models.tokenizers import EnTokenizer
 from .models.voice_encoder import VoiceEncoder
 from .models.t3.modules.cond_enc import T3Cond
+import os 
+import requests
+import urllib.request
+import urllib.error
+from tqdm.auto import tqdm
 
+def download_file(url, download_file_path, redownload=False):
+    """Download a single file with urllib and a tqdm progress bar."""
+    base_path = os.path.dirname(download_file_path)
+    os.makedirs(base_path, exist_ok=True)
+
+    if os.path.exists(download_file_path):
+        if redownload:
+            os.remove(download_file_path)
+            tqdm.write(f"♻️ Redownloading: {os.path.basename(download_file_path)}")
+        elif os.path.getsize(download_file_path) > 0:
+            tqdm.write(f"✔️ Skipped (already exists): {os.path.basename(download_file_path)}")
+            return True
+
+    try:
+        request = urllib.request.urlopen(url)
+        total = int(request.headers.get('Content-Length', 0))
+    except urllib.error.URLError as e:
+        print(f"❌ Error: Unable to open URL: {url}")
+        print(f"Reason: {e.reason}")
+        return False
+
+    with tqdm(total=total, desc=os.path.basename(download_file_path), unit='B', unit_scale=True, unit_divisor=1024) as progress:
+        try:
+            urllib.request.urlretrieve(
+                url,
+                download_file_path,
+                reporthook=lambda count, block_size, total_size: progress.update(block_size)
+            )
+        except urllib.error.URLError as e:
+            print(f"❌ Error: Failed to download {url}")
+            print(f"Reason: {e.reason}")
+            return False
+
+    tqdm.write(f"⬇️ Downloaded: {os.path.basename(download_file_path)}")
+    return True
 
 REPO_ID = "ResembleAI/chatterbox"
 
@@ -174,9 +214,13 @@ class ChatterboxTTS:
                 print("MPS not available because the current MacOS version is not 12.3+ and/or you do not have an MPS-enabled device on this machine.")
             device = "cpu"
 
+        # for fpath in ["ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors", "tokenizer.json", "conds.pt"]:
+        #     local_path = hf_hub_download(repo_id=REPO_ID, filename=fpath)
+        
         for fpath in ["ve.safetensors", "t3_cfg.safetensors", "s3gen.safetensors", "tokenizer.json", "conds.pt"]:
-            local_path = hf_hub_download(repo_id=REPO_ID, filename=fpath)
-
+          url=f"https://huggingface.co/ResembleAI/chatterbox/resolve/main/{fpath}"
+          local_path=f"./chatterbox_model/{fpath}"
+          download_file(url,local_path)
         return cls.from_local(Path(local_path).parent, device)
 
     def prepare_conditionals(self, wav_fpath, exaggeration=0.5):
@@ -259,5 +303,5 @@ class ChatterboxTTS:
                 ref_dict=self.conds.gen,
             )
             wav = wav.squeeze(0).detach().cpu().numpy()
-            watermarked_wav = self.watermarker.apply_watermark(wav, sample_rate=self.sr)
+            watermarked_wav = wav
         return torch.from_numpy(watermarked_wav).unsqueeze(0)
