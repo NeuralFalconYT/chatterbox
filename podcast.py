@@ -1,4 +1,3 @@
-%%writefile /content/chatterbox/podcast.py
 #@title Podcast
 
 """
