@@ -1,0 +1,2 @@
+Copied from here:
+https://github.com/microsoft/VibeVoice/tree/main/demo/voices
