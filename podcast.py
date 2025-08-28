@@ -305,7 +305,7 @@ def create_demo_interface(demo_instance: ChatterboxDemo):
                         stop_btn = gr.Button("🛑 Stop", variant="stop", visible=False, scale=1)
 
                     gr.Markdown("### 🎵 **Generated Output**")
-                    audio_output = gr.Audio(label="Podcast Audio", type="filepath")
+                    audio_output = gr.Audio(label="Podcast Audio")
                     
                     with gr.Accordion("📦 Download Files", open=False):
                       download_audio = gr.File(label="Download Audio (.wav)")
@@ -345,59 +345,123 @@ def create_demo_interface(demo_instance: ChatterboxDemo):
         )
 
     return interface
-import gradio as gr
+def build_conversation_prompt(topic, *speaker_names):
+    """
+    Generates the final prompt. It takes the topic and a variable number of speaker names.
+    """
+    names = [name for name in speaker_names if name and name.strip()]
 
-def build_conversation_prompt(topic, speaker1_name, speaker2_name):
+    # Error checking
+    if not topic or not topic.strip():
+        return "Error: Please provide a topic."
+    if not names:
+        return "Error: Please provide at least one speaker name."
+
+    num_speakers = len(names)
+    speaker_mapping_str = "Speaker mapping (for context only, DO NOT use these names as labels):\n"
+    for i, name in enumerate(names):
+        speaker_mapping_str += f"- Speaker {i+1} = {name}\n"
+    
+    speaker_labels = [f"\"Speaker {i+1}:\"" for i in range(num_speakers)]
+    
+    introductions_str = ""
+    for i, name in enumerate(names):
+        introductions_str += f"  - Speaker {i+1} introduces themselves by saying: \"I’m {name}...\"\n"
+        
+    example_str = "STRICT Example (follow this format exactly):\n"
+    example_str += f"Speaker 1: Hi everyone, I’m {names[0]}, and I’m excited to be here today.\n"
+    if num_speakers > 1:
+        for i in range(1, num_speakers):
+            example_str += f"Speaker {i+1}: And I’m {names[i]}. Thanks for joining us.\n"
+    example_str += "Speaker 1: So, let’s dive into our topic...\n"
+    
     prompt = f"""
 You are a professional podcast scriptwriter. 
-Write a natural, engaging conversation between two speakers on the topic: "{topic}".
+Write a natural, engaging conversation between {num_speakers} speakers on the topic: "{topic}".
 
-Speaker mapping (for context only, DO NOT use these names as labels):
-- Speaker 1 = {speaker1_name}
-- Speaker 2 = {speaker2_name}
-
+{speaker_mapping_str}
 Formatting Rules:
-- You MUST always format dialogue with "Speaker 1:" and "Speaker 2:" ONLY. 
-- Never replace the labels with real names. The labels stay exactly as "Speaker 1:" and "Speaker 2:".
+- You MUST always format dialogue with {', '.join(speaker_labels)} ONLY. 
+- Never replace the labels with real names. The labels stay exactly as they are.
 - At the beginning:
-  - Speaker 1 introduces themselves by saying: "I’m {speaker1_name}..."
-  - Speaker 2 introduces themselves by saying: "I’m {speaker2_name}..."
-- During the conversation, they may occasionally mention each other's names ({speaker1_name}, {speaker2_name}) naturally in the dialogue, but the labels must remain unchanged.
+{introductions_str}
+- During the conversation, they may occasionally mention each other's names ({', '.join(names)}) naturally in the dialogue, but the labels must remain unchanged.
 - Do not add narration, descriptions, or any extra formatting.
 
-STRICT Example (follow this format exactly):
-Speaker 1: Hi everyone, I’m {speaker1_name}, and I’m excited to be here today.  
-Speaker 2: And I’m {speaker2_name}. Thanks for joining us for this conversation.  
-Speaker 1: So, let’s dive into our topic...
+{example_str}
 """
     return prompt
 
+def update_speaker_name_visibility(num_speakers):
+    """
+    Shows or hides the speaker name textboxes based on the slider value.
+    """
+    num = int(num_speakers)
+    updates = []
+    for i in range(4):
+        if i < num:
+            updates.append(gr.update(visible=True))
+        else:
+            updates.append(gr.update(visible=False, value=""))
+    
+    return tuple(updates) 
 
 def ui2():
-    with gr.Blocks(title="Prompt Builder — Speaker 1 / Speaker 2") as demo:
+
+    with gr.Blocks(title="Prompt Builder") as demo:
         gr.HTML("""
         <div style="text-align: center; margin: 20px auto; max-width: 800px;">
-            <h1 style="font-size: 2.5em; margin-bottom: 5px;">🎙️ Sample Example Prompt Generator</h1>
-            <p style="font-size: 1.2em; color: #555;">Enter topic and speaker names to generate a strict podcast script prompt.</p>
+            <h1 style="font-size: 2.5em; margin-bottom: 5px;">🎙️ Sample Podcast Prompt Generator</h1>
+            <p style="font-size: 1.2em; color: #555;">Paste the prompt into any LLM, and customize the propmt if you want.</p>
         </div>""")
+        
         with gr.Row():
-            with gr.Column():
-                topic = gr.Textbox(label="Topic", placeholder="e.g. The Future of Artificial Intelligence")
-                speaker1 = gr.Textbox(label="Speaker 1 name", placeholder="e.g. Alice")
-                speaker2 = gr.Textbox(label="Speaker 2 name", placeholder="e.g. Bob")
-                gen_btn = gr.Button("Generate Prompt")
+            with gr.Column(scale=1):
+                topic = gr.Textbox(label="Topic", placeholder="e.g., The Future of Artificial Intelligence")
                 
-                # Example button row
+                num_speakers = gr.Slider(
+                    minimum=1, 
+                    maximum=4, 
+                    value=2, 
+                    step=1, 
+                    label="Number of Speakers"
+                )
+                
+                with gr.Group():
+                    speaker_textboxes = [
+                        gr.Textbox(label=f"Speaker {i+1} Name", visible=(i < 2), placeholder=f"e.g., Speaker {i+1}")
+                        for i in range(4)
+                    ]
+                
+                gen_btn = gr.Button("Generate Prompt", variant="primary")
+
+
                 gr.Examples(
-                    [["The Future of Artificial Intelligence", "Alice", "Bob"]],
-                    inputs=[topic, speaker1, speaker2],
-                    label="Quick Example"
+                    examples=[
+                        ["The Ethics of Gene Editing", 2, "Dr. Evelyn Reed", "Dr. Ben Carter", "", ""],
+                        ["Exploring the Deep Sea", 3, "Maria", "Leo", "Samira", ""],
+                        ["The Future of Space Tourism", 4, "Alex", "Zara", "Kenji", "Isla"]
+                    ],
+                    # The inputs list must match the order of items in the examples list
+                    inputs=[topic, num_speakers] + speaker_textboxes,
+                    label="Quick Examples"
                 )
 
-            with gr.Column():
-                output_prompt = gr.Textbox(label="Generated Prompt", lines=18)
+            with gr.Column(scale=2):
+                output_prompt = gr.Textbox(label="Generated Prompt", lines=25, interactive=False, show_copy_button=True)
 
-        gen_btn.click(build_conversation_prompt, inputs=[topic, speaker1, speaker2], outputs=[output_prompt])
+        
+        num_speakers.change(
+            fn=update_speaker_name_visibility, 
+            inputs=num_speakers, 
+            outputs=speaker_textboxes
+        )
+        
+        gen_btn.click(
+            fn=build_conversation_prompt, 
+            inputs=[topic] + speaker_textboxes, 
+            outputs=[output_prompt]
+        )
 
     return demo
 
@@ -415,9 +479,12 @@ def main(debug, share):
     
     demo1 = create_demo_interface(demo_instance)
     demo2= ui2()
-    
+    custom_css = """
+      .gradio-container {
+          font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
+      }"""
 
-    demo = gr.TabbedInterface([demo1, demo2],["Chatterbox Podcast","Generated Sample Podcast Script"],title="",theme=gr.themes.Soft())
+    demo = gr.TabbedInterface([demo1, demo2],["Chatterbox Podcast","Generate Sample Podcast Script"],title="",theme=gr.themes.Soft(),css=custom_css)
 
     print("🚀 Launching Gradio Demo...")
     demo.queue().launch(debug=debug, share=share)
